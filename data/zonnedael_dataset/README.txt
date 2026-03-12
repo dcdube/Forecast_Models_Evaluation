@@ -1,4 +1,4 @@
-Explanation of datasets “Zonnedael”
+Explanation of datasets “Zonnedael” collected in the Netherlands
 
 This dataset contains actual consumption data from approximately 80 addresses, with time intervals of 15 minutes for electricity and 60 minutes for gas.
 

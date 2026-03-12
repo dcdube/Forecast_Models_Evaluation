@@ -6,7 +6,7 @@ from scipy import stats
 class DatasetBelgiumNeuralForecast:
     # Load electric consumption data for specified range and reformat for NeuralForecast
     def get_inputs_for_load(self, start_dt, end_dt):
-        load_file = "data/belgium_dataset/common_env/SFH19_2023_2024_15min_3_month.csv"
+        load_file = "data/germany_wpuq_dataset/common_env/SFH19_2023_2024_15min_3_month.csv"
         load_df = pd.read_csv(load_file)
         load_df["datetime"] = pd.to_datetime(load_df["datetime"])
 
@@ -198,7 +198,7 @@ class DatasetLondonZonnedael1D:
         return X, y
 
     def get_inputs_for_zonnedael_consumption(self, customer_number: int):
-        zonnedael_consumption_file = "data/liander_zonnedael_dataset/liander_zonnedael_2013_original.csv"
+        zonnedael_consumption_file = "data/zonnedael_dataset/liander_zonnedael_2013_original.csv"
         df = pd.read_csv(zonnedael_consumption_file)
         df["datetime"] = pd.to_datetime(df["datetime"])
 
