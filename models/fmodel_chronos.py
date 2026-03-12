@@ -2,7 +2,6 @@ import pandas as pd
 import os
 import warnings
 import logging
-import matplotlib.pyplot as plt
 from utils import calculate_metrics, forecast_plot_and_csv, plot_model_metrics
 from dataset_config import DatasetBelgiumNeuralForecast, DatasetLondonZonnedaelNeuralForecast
 import time

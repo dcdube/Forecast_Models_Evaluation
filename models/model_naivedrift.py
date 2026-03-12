@@ -2,12 +2,11 @@ import pandas as pd
 import os
 import warnings
 import logging
-import matplotlib.pyplot as plt
-from utils import calculate_metrics, forecast_plot_and_csv, setup_logger, plot_model_metrics
+from utils import calculate_metrics, forecast_plot_and_csv, plot_model_metrics
 from dataset_config import DatasetBelgiumNeuralForecast, DatasetLondonZonnedaelNeuralForecast
 import time
-import gc  # For garbage collection
-import numpy as np  # for noise generation
+import gc 
+import numpy as np  
 
 # ============================ Dataset Selection Toggle ===================================
 selected_dataset = "london_zonnedael"  # Options: "belgium" or "london_zonnedael"

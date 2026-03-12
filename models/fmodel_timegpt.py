@@ -17,7 +17,7 @@ dataset_london_zonnedael = DatasetLondonZonnedaelNeuralForecast()
 # =========================================================================================
 
 # ============================ TimeGPT Configuration ======================================
-TIMEGPT_API_KEY = 'nixak-uCeG2Z0j3yaTYgdO8hDY0G0ki8la7Z5wq0As0jg8hVXRf1tSsB36Y7q4qwQs0fRqO0EEQrAOtN0sdDKB'
+TIMEGPT_API_KEY = 'nixak-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'
 timegpt_client = NixtlaClient(api_key=TIMEGPT_API_KEY)
 
 timegpt_model_name = "timegpt-1-long-horizon"  # Options: "timegpt-1" or "timegpt-1-long-horizon"

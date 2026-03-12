@@ -1,28 +1,20 @@
 import pandas as pd
-import numpy as np
 import os
 import warnings
 import logging
-import datetime
 import time
-import gc  # Garbage collection
+import gc  
 from gluonts.dataset.common import ListDataset
 from gluonts.mx.trainer import Trainer
 from gluonts.evaluation.backtest import make_evaluation_predictions
 import mxnet as mx
 from dataset_config import DatasetBelgiumNeuralForecast, DatasetLondonZonnedaelNeuralForecast
-from utils import calculate_metrics, forecast_plot_and_csv, save_model, setup_logger, plot_model_metrics
+from utils import calculate_metrics, forecast_plot_and_csv, plot_model_metrics
 from gluonts.model.seq2seq import MQRNNEstimator
-from gluonts.model.renewal import DeepRenewalProcessEstimator
-from gluonts.model.tpp.deeptpp import DeepTPPEstimator
 from gluonts.model.seq2seq import MQCNNEstimator
-from gluonts.model.deepvar import DeepVAREstimator
-from gluonts.model.deepstate import DeepStateEstimator
 from gluonts.model.deep_factor import DeepFactorEstimator
 from gluonts.model.wavenet import WaveNetEstimator
-from gluonts.model.lstnet import LSTNetEstimator
 from gluonts.model.tft import TemporalFusionTransformerEstimator
-from gluonts.model.gpvar import GPVAREstimator
 from gluonts.model.deepar import DeepAREstimator
 
 # ============================
@@ -37,18 +29,12 @@ n_epochs = 100  # Number of epochs for training
 # Supported GluonTS Models
 # ========================
 model_classes = {
-    # "WaveNet": WaveNetEstimator,
-    # "DeepFactor": DeepFactorEstimator,
-    # "TemporalFusionTransformer": TemporalFusionTransformerEstimator,
     "DeepAR": DeepAREstimator,
-    # "MQCNN": MQRNNEstimator,
-    # "MQRNN": MQCNNEstimator
-    # "DeepState": DeepStateEstimator,
-    # "LSTNet": LSTNetEstimator,
-    # "GPVAR": GPVAREstimator,
-    # "DeepRenewal": DeepRenewalProcessEstimator,
-    # "DeepTPP": DeepTPPEstimator,
-    # "DeepVAR": DeepVAREstimator
+    "DeepFactor": DeepFactorEstimator,
+    "MQCNN": MQRNNEstimator,
+    "MQRNN": MQCNNEstimator,
+    "TemporalFusionTransformer": TemporalFusionTransformerEstimator, # TFT
+    "WaveNet": WaveNetEstimator
 }
 
 # ========================
@@ -94,17 +80,17 @@ def train_gluonts_model(y_df, model_name, save_dir, model_class, sampling_rate, 
     logging.info(f"Training {model_name} model on {len(train_df)} samples...")
 
     if model_name in ["MQRNN", "MQCNN"]:
-        estimator = model_class(freq=freq, 
-                                prediction_length=forecast_horizon, 
-                                trainer=Trainer(epochs=n_epochs, num_batches_per_epoch=1, ctx=mx.cpu()))
-    elif model_name == "DeepVAR":
-        estimator = model_class(freq=freq, 
-                                prediction_length=forecast_horizon,    
-                                trainer=Trainer(epochs=n_epochs, num_batches_per_epoch=1, ctx=mx.cpu()), target_dim=1,)
+        estimator = model_class(
+            freq=freq,
+            prediction_length=forecast_horizon,
+            trainer=Trainer(epochs=n_epochs, num_batches_per_epoch=1, ctx=mx.cpu())
+        )
     else:
-        estimator = model_class(freq=freq, 
-                                prediction_length=forecast_horizon, 
-                                trainer=Trainer(epochs=n_epochs, num_batches_per_epoch=1, ctx=mx.cpu()))
+        estimator = model_class(
+            freq=freq,
+            prediction_length=forecast_horizon,
+            trainer=Trainer(epochs=n_epochs, num_batches_per_epoch=1, ctx=mx.cpu())
+        )
 
     predictor = estimator.train(training_data=train_ds)
 

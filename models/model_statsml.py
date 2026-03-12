@@ -1,23 +1,14 @@
 import pandas as pd  
 import os
 import time
-import datetime
 import logging
-import matplotlib.pyplot as plt
 import warnings
 import gc
-import numpy as np
 from sklearn.neighbors import KNeighborsRegressor
-from statsforecast import StatsForecast
-from statsforecast.models import RandomWalkWithDrift
 import lightgbm as lgb
-import xgboost as xgb
-from sklearn.linear_model import LinearRegression
-from statsmodels.tsa.holtwinters import ExponentialSmoothing
 import pmdarima as pm
-from statsmodels.tsa.forecasting.theta import ThetaModel
 from dataset_config import DatasetBelgium1D, DatasetLondonZonnedael1D
-from utils import split_train_test, calculate_metrics, forecast_plot_and_csv, setup_logger, plot_model_metrics
+from utils import split_train_test, calculate_metrics, forecast_plot_and_csv, plot_model_metrics
 
 # ============================ Dataset Selection Toggle ===================================
 selected_dataset = "london_zonnedael"  # Options: "belgium" or "london_zonnedael"
@@ -27,7 +18,7 @@ dataset_london_zonnedael = DatasetLondonZonnedael1D()
 # =========================================================================================
 
 # Set of deterministic models
-deterministic_models = {"ARIMA", "KNNRegression", "NaiveMovingAverage", "NaiveDrift", "Theta", "ExponentialSmoothing"}
+deterministic_models = {"ARIMA", "NaiveMovingAverage"}
  
 # Setup logger per run
 def setup_model_logger(save_dir):
@@ -65,33 +56,12 @@ def generic_model(X, y, model_name, save_dir, model_type, run_num, sampling_rate
 
         logging.info(f"Training {model_type} model for {model_name} on {len(y_train)} samples (univariate)...")
 
-        # if model_type == "ARIMA":
-        #     model = pm.auto_arima(
-        #         y_train,
-        #         start_p=0, start_q=0,
-        #         max_p=1, max_q=1,
-        #         m=48,
-        #         seasonal=True,
-        #         start_P=0, start_Q=0,
-        #         max_P=1, max_Q=1,
-        #         D=1,
-        #         trace=True,
-        #         error_action='ignore',
-        #         suppress_warnings=True,
-        #         stepwise=True,
-        #         maxiter=25 
-        #     )
-        #     preds = model.predict(n_periods=forecast_horizon)
-
-        # 1. Pre-calculate differencing orders to save time inside the loop
-        # This runs the tests only ONCE, not for every model fit.
         d_order = pm.arima.ndiffs(y_train, alpha=0.05, test='kpss', max_d=2)
 
         # If you MUST use seasonality, pre-calculate D as well.
         # Note: With m=48, this can still be slow.
         D_order = pm.arima.nsdiffs(y_train, m=48, max_D=1, test='ch')
 
-        # 2. Fit the model with smarter parameters
         if model_type == "ARIMA":
             model = pm.auto_arima(
                 y_train,
@@ -115,26 +85,6 @@ def generic_model(X, y, model_name, save_dir, model_type, run_num, sampling_rate
             )
             preds = model.predict(n_periods=forecast_horizon)
 
-        elif model_type == "ExponentialSmoothing":
-            model = ExponentialSmoothing(
-                y_train, trend="add", seasonal="add", seasonal_periods=int(forecast_horizon/2)
-            ).fit()
-            preds = model.forecast(forecast_horizon)
-
-        # elif model_type == "NaiveMovingAverage":
-        #     preds = np.repeat(y_train.rolling(window=int(forecast_horizon/2)).mean().iloc[-1], forecast_horizon)
-        #     model = "NaiveMovingAverage"
-
-        # elif model_type == "NaiveDrift":
-        #     drift = (y_train.iloc[-1] - y_train.iloc[0]) / (len(y_train) - 1)
-        #     preds = y_train.iloc[-1] + drift * np.arange(1, forecast_horizon + 1)
-        #     model = "NaiveDrift"
-
-        elif model_type == "NaiveDrift":
-            drift = (y_train.iloc[-1] - y_train.iloc[0]) / (len(y_train) - 1)
-            preds = y_train.iloc[-1] + drift * np.arange(1, forecast_horizon + 1) + np.random.normal(0, 1, forecast_horizon).cumsum()
-            model = "NaiveDrift"
-
         elif model_type == "NaiveMovingAverage":
             k = int(forecast_horizon / 1)
             hist = y_train.tolist().copy()
@@ -142,26 +92,6 @@ def generic_model(X, y, model_name, save_dir, model_type, run_num, sampling_rate
                 hist.append(sum(hist[-k:]) / k)
             preds = hist[-forecast_horizon:]
             model = "NaiveMovingAverage"
-            
-        # elif model_type == "NaiveDrift":
-        #     # Prepare training data in statsforecast format
-        #     df_train = pd.DataFrame({
-        #         'unique_id': ['series1'] * len(y_train),
-        #         'ds': y_train.index,
-        #         'y': y_train.values
-        #     })
-        #     # Instantiate and fit the model
-        #     model = StatsForecast(models=[RandomWalkWithDrift()], freq='D')
-        #     model.fit(df_train)
-
-        #     # Forecast
-        #     preds_df = model.predict(h=forecast_horizon)
-        #     preds = preds_df['RandomWalkWithDrift'].values
-        #     model = "NaiveDrift"
-
-        elif model_type == "Theta":
-            model = ThetaModel(y_train, period=int(forecast_horizon/2)).fit()
-            preds = model.forecast(forecast_horizon)
         else:
             raise NotImplementedError(f"{model_type} not supported for univariate.")
 
@@ -194,10 +124,6 @@ def generic_model(X, y, model_name, save_dir, model_type, run_num, sampling_rate
             model = lgb.LGBMRegressor(**params).fit(X_train, y_train)
             preds = model.predict(X_test)
 
-        elif model_type == "XGBoost":
-            model = xgb.XGBRegressor().fit(X_train, y_train)
-            preds = model.predict(X_test)
-
         elif model_type == "KNNRegression":
             model = KNeighborsRegressor().fit(X_train, y_train)
             preds = model.predict(X_test)
@@ -214,7 +140,7 @@ def generic_model(X, y, model_name, save_dir, model_type, run_num, sampling_rate
 
 # ==================================================DatasetBelgium1D============================================================
 def train_load_model(start_dt, end_dt, save_dir, model_type, run_num, sampling_rate, forecast_horizon):
-    if model_type in ["NaiveMovingAverage", "NaiveDrift", "Theta", "ExponentialSmoothing", "ARIMA"]:
+    if model_type in ["NaiveMovingAverage", "ARIMA"]:
         y = dataset_belgium.get_load_data(start_dt, end_dt)[1]
         return generic_model(None, y, "load", save_dir, model_type, run_num, sampling_rate, forecast_horizon)
     else:
@@ -222,7 +148,7 @@ def train_load_model(start_dt, end_dt, save_dir, model_type, run_num, sampling_r
         return generic_model(X, y, "load", save_dir, model_type, run_num, sampling_rate, forecast_horizon)
 
 def train_pv_model(start_dt, end_dt, save_dir, house, model_type, run_num, sampling_rate, forecast_horizon):
-    if model_type in ["NaiveMovingAverage", "NaiveDrift", "Theta", "ExponentialSmoothing", "ARIMA"]:
+    if model_type in ["NaiveMovingAverage", "ARIMA"]:
         y = dataset_belgium.get_pv_data(house, start_dt, end_dt)[1]
         return generic_model(None, y, f"pv_house_{house}", save_dir, model_type, run_num, sampling_rate, forecast_horizon)
     else:
@@ -230,7 +156,7 @@ def train_pv_model(start_dt, end_dt, save_dir, house, model_type, run_num, sampl
         return generic_model(X, y, f"pv_house_{house}", save_dir, model_type, run_num, sampling_rate, forecast_horizon)
 
 def train_battery_model(start_dt, end_dt, save_dir, house, model_type, run_num, sampling_rate, forecast_horizon):
-    if model_type in ["NaiveMovingAverage", "NaiveDrift", "Theta", "ExponentialSmoothing", "ARIMA"]:
+    if model_type in ["NaiveMovingAverage", "ARIMA"]:
         y = dataset_belgium.get_battery_data(house, start_dt, end_dt)[1]
         return generic_model(None, y, f"bess_house_{house}", save_dir, model_type, run_num, sampling_rate, forecast_horizon)
     else:
@@ -239,7 +165,7 @@ def train_battery_model(start_dt, end_dt, save_dir, house, model_type, run_num, 
 
 # ================================================DatasetLondonZonnedael1D=========================================================
 def train_london_consumption_model(save_dir, model_type, run_num, sampling_rate, forecast_horizon):
-    if model_type in ["NaiveMovingAverage", "NaiveDrift", "Theta", "ExponentialSmoothing", "ARIMA"]:
+    if model_type in ["NaiveMovingAverage", "ARIMA"]:
         y = dataset_london_zonnedael.get_inputs_for_london_consumption()[1]
         return generic_model(None, y, "london_load", save_dir, model_type, run_num, sampling_rate, forecast_horizon)
     else:
@@ -251,7 +177,7 @@ def train_zonnedael_consumption_model(save_dir, model_type, run_num, sampling_ra
     customer_ids = [8, 9, 43]
 
     for customer_number in customer_ids:
-        if model_type in ["NaiveMovingAverage", "NaiveDrift", "Theta", "ExponentialSmoothing", "ARIMA"]:
+        if model_type in ["NaiveMovingAverage", "ARIMA"]:
             _, y = dataset_london_zonnedael.get_inputs_for_zonnedael_consumption(customer_number)
             model, mae, rmse, mape, r2 = generic_model(
                 None, y, f"zonnedael_customer_{customer_number}",
@@ -317,14 +243,10 @@ def paper_forecasting_train(run_num, model_type, sampling_rate):
 # Main script
 if __name__ == "__main__":
     model_types = [
-        "NaiveMovingAverage", 
-        # "NaiveDrift", 
-        # "Theta",
-        # "LightGBM", 
-        # "XGBoost",
-        # "KNNRegression", 
-        # "ExponentialSmoothing",
-        # "ARIMA"
+        "KNNRegression",
+        "LightGBM",
+        "ARIMA",
+        "NaiveMovingAverage",
     ]
 
     for sampling_rate in [25, 50, 100/3, 100]:

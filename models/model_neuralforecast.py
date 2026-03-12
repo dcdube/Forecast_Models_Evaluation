@@ -2,12 +2,11 @@ import pandas as pd
 import os
 import warnings
 import logging
-import matplotlib.pyplot as plt
-from utils import calculate_metrics, forecast_plot_and_csv, save_model, setup_logger, plot_model_metrics
+from utils import calculate_metrics, forecast_plot_and_csv, plot_model_metrics
 from dataset_config import DatasetBelgiumNeuralForecast, DatasetLondonZonnedaelNeuralForecast
 import torch
 import time
-import gc  # Added for garbage collection
+import gc 
 from neuralforecast import NeuralForecast
 from neuralforecast.models import *
 
@@ -21,36 +20,19 @@ n_epochs = 100
 
 # List of models to iterate through
 model_classes = {
-    # "BiTCN": BiTCN,
-    # "DeepNPTS": DeepNPTS,
-    # "DilatedRNN": DilatedRNN,
-    # "GRU": GRU,
-    # "Informer": Informer,
-    # "LSTM": LSTM,
-    # "MLP": MLP,
-    # "NBEATS": NBEATS,
-    # "NHITS": NHITS,
-    # "NLinear": NLinear,
-    # "PatchTST": PatchTST,
-    # "SOFTS": SOFTS,
-    # "TCN": TCN,
-    # "TiDE": TiDE,
-    # "TimesNet": TimesNet,
-    # "TimeMixer": TimeMixer,
-    # "TimeXer": TimeXer,
-    # "iTransformer": iTransformer,
-    # ==============================================
-    # "Autoformer": Autoformer,
-    # "VanillaTransformer": VanillaTransformer,
-    # "FEDformer": FEDformer,
-    # "TFT": TFT,
-    # "KAN": KAN,
-    # "HINT": HINT,
-    # "NBEATSx": NBEATSx,
-    # "RNN": RNN,
-    # "RMoK": RMoK,
-    # "TimeLLM": TimeLLM,
-    # "StemGNN": StemGNN,
+    "BiTCN": BiTCN,
+    "DeepNPTS": DeepNPTS,
+    "Informer": Informer,
+    "NBEATS": NBEATS,
+    "NHITS": NHITS,
+    "NLinear": NLinear,
+    "PatchTST": PatchTST,
+    "TCN": TCN,
+    "TiDE": TiDE,
+    "TimesNet": TimesNet,
+    "TimeXer": TimeXer,
+    "iTransformer": iTransformer,
+    "VanillaTransformer": VanillaTransformer
 }
 
 # Custom logger setup per model
@@ -90,14 +72,10 @@ def neural_forecast_model(y_df, model_name, save_dir, freq, forecast_horizon, nf
 
     logging.info(f"Training {nf_model_name} {model_name} model on {len(train_df)} samples ({sampling_rate}% of original training set)...")
 
-    if nf_model_name in ["TimeXer", "iTransformer", "TimeMixer", "SOFTS"]:
+    if nf_model_name in ["TimeXer", "iTransformer"]:
         nf = NeuralForecast(
             models=[NFmodel(h=forecast_horizon, input_size=forecast_horizon * 2, n_series=1, max_steps=n_epochs, random_seed=current_seed)],
             freq=freq)
-    # elif nf_model_name in ["HINT"]:
-    #     nf = NeuralForecast(
-    #         models=[NFmodel(h=forecast_horizon, max_steps=n_epochs, random_seed=current_seed)],
-    #         freq=freq)
     else:
         nf = NeuralForecast(
             models=[NFmodel(h=forecast_horizon, input_size=forecast_horizon * 2, max_steps=n_epochs, random_seed=current_seed)],

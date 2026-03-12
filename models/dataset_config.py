@@ -1,10 +1,8 @@
 import pandas as pd
 import numpy as np
-import datetime
 from utils import min_max_normalize
 from scipy import stats
 
-# ===========================================================================================================================================================================================
 class DatasetBelgiumNeuralForecast:
     # Load electric consumption data for specified range and reformat for NeuralForecast
     def get_inputs_for_load(self, start_dt, end_dt):
@@ -72,7 +70,6 @@ class DatasetBelgiumNeuralForecast:
 
         return df[["unique_id", "ds", "y"]]
 
-# ===========================================================================================================================================================================================
 class DatasetBelgium1D:
     # Load electric consumption data for specified range and reformat for LightGBM
     def get_load_data(self, start_dt, end_dt):
@@ -151,7 +148,6 @@ class DatasetBelgium1D:
         y = df["y"]
         return X, y
 
-# ===========================================================================================================================================================================================
 class DatasetLondonZonnedaelNeuralForecast:
     # Load electric consumption data for specified range and reformat for NeuralForecast
     def get_inputs_for_london_consumption(self):
@@ -180,7 +176,6 @@ class DatasetLondonZonnedaelNeuralForecast:
 
         return df[["unique_id", "ds", "y"]]
 
-# ===========================================================================================================================================================================================
 class DatasetLondonZonnedael1D:
     # Load electric consumption data for specified range and reformat for LightGBM
     def get_inputs_for_london_consumption(self):
@@ -224,148 +219,3 @@ class DatasetLondonZonnedael1D:
         y = df["y"]
         return X, y
 
-# ===========================================================================================================================================================================================
-class DatasetBelgiumLag:
-    def __init__(self):
-        self.lag_forecast = 96  # Default lag for load forecasting
-
-    # Convert string timestamp to naive datetime object
-    def to_datetime(self, dt_str):
-        return datetime.datetime.strptime(
-            dt_str.replace("Z", "+00:00"), "%Y-%m-%dT%H:%M:%S%z"
-        ).replace(tzinfo=None)
-
-    # Convert dictionary of lists to time-indexed DataFrame
-    def preprocess_dict(self, data):
-        df = pd.DataFrame(data)
-        df = df.set_index("datetime")
-        df["hour"] = df.index.hour
-        df = df.sort_index()
-        return df
-
-    # Load electric consumption data for specified range
-    def get_inputs_for_load(self, start_dt, end_dt):
-        load_file = "data/belgium_dataset/common_env/SFH19_2023_2024_15min_3_month.csv" # For Windows
-        # load_file = "/mnt/c/Users/20245168/repositories/power-forecasting-evaluation/data/belgium_dataset/common_env/SFH19_2023_2024_15min_3_month.csv" # For Linux WSL
-        load_df = pd.read_csv(load_file)
-        load = load_df.to_dict(orient="list")
-        load["datetime"] = [self.to_datetime(d) for d in load["datetime"]]
-
-        load_data = {
-            "datetime": [],
-            "load": [],
-        }
-        for i, dt in enumerate(load["datetime"]):
-            if start_dt <= dt < end_dt:
-                load_data["datetime"].append(dt)
-                load_data["load"].append(load["Consumer_0_electric (kW)"][i])
-        return load_data
-    
-    # Load pv data for specified range
-    def get_inputs_for_pv(self, house, start_dt, end_dt):
-        start_str = start_dt.strftime("%Y-%m-%d_%H%M")
-        end_str = end_dt.strftime("%Y-%m-%d_%H%M")
-        pv_file = f"data/belgium_dataset/house_{house}/{start_str}_{end_str}/solar.csv" # For Windows
-        # pv_file = f"/mnt/c/Users/20245168/repositories/power-forecasting-evaluation/data/belgium_dataset/house_{house}/{start_str}_{end_str}/solar.csv" # For Linux WSL
-        return pv_file
-
-    # Load battery data for specified range
-    def get_inputs_for_battery(self, house, start_dt, end_dt):
-        start_str = start_dt.strftime("%Y-%m-%d_%H%M")
-        end_str = end_dt.strftime("%Y-%m-%d_%H%M")
-        battery_file = f"data/belgium_dataset/house_{house}/{start_str}_{end_str}/battery.csv" # For Windows
-        # battery_file = f"/mnt/c/Users/20245168/repositories/power-forecasting-evaluation/data/belgium_dataset/house_{house}/{start_str}_{end_str}/battery.csv" # For Linux WSL
-        return battery_file
-
-    lag_forecast = 96  # Default lag for load forecasting
-    # def preprocess_ev_data(self, ev_schedule_data, n_lag=lag_forecast): 
-    #     df = self.preprocess_dict(ev_schedule_data)
-
-    #     for i in range(1, n_lag + 1):
-    #         df[f"soc_init_lag-{i}"] = df["soc_init"].shift(i)
-    #     df["hour"] = df["hour"]
-    #     df = df.dropna()
-
-    #     for i in range(n_lag):
-    #         df[f"forward_soc_final-{i}"] = df["soc_final"].shift(-i)
-    #         df[f"forward_detention-{i}"] = df["detention"].shift(-i)
-    #     df = df.dropna()
-
-    #     feature_cols = [f"soc_init_lag-{i}" for i in range(1, n_lag + 1)] + ["hour"]
-
-    #     X_det = df[feature_cols]
-    #     y_det = df[[f"forward_detention-{i}" for i in range(n_lag)]]
-
-    #     X_soc = df[feature_cols]
-    #     y_soc = df[[f"forward_soc_final-{i}" for i in range(n_lag)]]
-
-    #     return (
-    #         min_max_normalize(X_det),
-    #         min_max_normalize(y_det),
-    #         min_max_normalize(X_soc),
-    #         min_max_normalize(y_soc),
-    #     )
-
-   # Preprocess load data for model training
-    def preprocess_load_data(self, load_data, n_lag=lag_forecast):
-        df = self.preprocess_dict(load_data)
-
-        for i in range(1, n_lag + 1):
-            df[f"load-{i}"] = df["load"].shift(i)
-        # df["day_of_week"] = df.index.dayofweek
-        df["hour"] = df.index.hour
-        df = df.dropna()
-
-        for i in range(n_lag):
-            df[f"forward_load-{i}"] = df["load"].shift(-i)
-        df = df.dropna()
-
-        X = df.drop(["load"] + [f"forward_load-{i}" for i in range(n_lag)], axis=1)
-        y = df[[f"forward_load-{i}" for i in range(n_lag)]]
-
-        return min_max_normalize(X), min_max_normalize(y)
-    
-    # Preprocess solar PV CSV file
-    def preprocess_pv_data(self, pv_file, n_lag=lag_forecast): 
-        df = pd.read_csv(pv_file, index_col="datetime", parse_dates=True)
-
-        for i in range(1, n_lag + 1):
-            df[f"solar-{i}"] = df["SolarPv_0 (kW)"].shift(i)
-        df["hour"] = df.index.hour
-        df = df.dropna()
-
-        for i in range(n_lag):
-            df[f"forward_solar-{i}"] = df["SolarPv_0 (kW)"].shift(-i)
-        df = df.dropna()
-
-        X = df.drop(["SolarPv_0 (kW)"] + [f"forward_solar-{i}" for i in range(n_lag)], axis=1)
-        y = df[[f"forward_solar-{i}" for i in range(n_lag)]]
-
-        return min_max_normalize(X), min_max_normalize(y)
-
-    # Preprocess battery CSV file
-    def preprocess_battery_data(self, battery_file, n_lag=lag_forecast):
-        df = pd.read_csv(battery_file, index_col="datetime", parse_dates=True)
-
-        # Detect anomalies using Z-score on 'Battery_0 (kW)'
-        z_scores = np.abs(stats.zscore(df["Battery_0 (kW)"], nan_policy='omit'))  # skip NaNs in z-score calculation
-        anomalies = z_scores >= 3
-        # Replace anomalies with NaN so they can be imputed
-        df.loc[anomalies, "Battery_0 (kW)"] = np.nan
-
-        # Impute missing values (NaNs and replaced anomalies) with linear interpolation
-        df["Battery_0 (kW)"] = df["Battery_0 (kW)"].interpolate(method='linear', limit_direction='both')
-
-        for i in range(1, n_lag + 1):
-            df[f"battery-{i}"] = df["Battery_0 (kW)"].shift(i)
-        df["hour"] = df.index.hour
-        df = df.dropna()
-
-        for i in range(n_lag):
-            df[f"forward_battery-{i}"] = df["Battery_0 (kW)"].shift(-i)
-        df = df.dropna()
-
-        X = df.drop(["Battery_0 (kW)"] + [f"forward_battery-{i}" for i in range(n_lag)], axis=1)
-        y = df[[f"forward_battery-{i}" for i in range(n_lag)]]
-
-        return min_max_normalize(X), min_max_normalize(y)

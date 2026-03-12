@@ -1,33 +1,43 @@
-import pandas as pd
 import os
 import warnings
 import logging
-from utils import calculate_metrics, forecast_plot_and_csv, plot_model_metrics
-from dataset_config import DatasetBelgiumNeuralForecast, DatasetLondonZonnedaelNeuralForecast
 import time
 import gc
+import pandas as pd
 import torch
-from gluonts.dataset.pandas import PandasDataset
-from gluonts.dataset.split import split
-
-from uni2ts.model.moirai import MoiraiForecast, MoiraiModule
-from uni2ts.model.moirai_moe import MoiraiMoEForecast, MoiraiMoEModule
+from torch import nn
+from torch.utils.data import DataLoader, TensorDataset
+from mamba_ssm import Mamba
+from dataset_config import DatasetBelgiumNeuralForecast, DatasetLondonZonnedaelNeuralForecast
+from utils import calculate_metrics, forecast_plot_and_csv, plot_model_metrics
 
 # ============================ Dataset Selection Toggle ===================================
-selected_dataset = "belgium"  # Options: "belgium" or "london_zonnedael"
+selected_dataset = "london_zonnedael"  # Options: "belgium" or "london_zonnedael"
 
 dataset_belgium = DatasetBelgiumNeuralForecast()
 dataset_london_zonnedael = DatasetLondonZonnedaelNeuralForecast()
+n_epochs = 50
 # =========================================================================================
 
-# Moirai Model Parameters
-MODEL = "moirai"      # Options: "moirai" or "moirai-moe"
-SIZE = "small"         # Options: "small", "base", "large"
-# CTX = forecast_horizon  # Context length
-PSZ = "auto"          # Patch size
-BSZ = 32              # Batch size
+# ============================ Mamba Model Wrapper ========================================
+class MambaForecaster(nn.Module):
+    def __init__(self, d_model, d_state, d_conv, expand, forecast_horizon):
+        super().__init__()
+        self.mamba = Mamba(
+            d_model=d_model,
+            d_state=d_state,
+            d_conv=d_conv,
+            expand=expand,
+        )
+        self.head = nn.Linear(d_model, forecast_horizon)
 
-# Logger setup
+    def forward(self, x):
+        # x: (batch, length, d_model)
+        y = self.mamba(x)
+        last_state = y[:, -1, :]
+        return self.head(last_state)
+
+# ============================ Logger Setup ===============================================
 def setup_model_logger(save_dir):
     os.makedirs(save_dir, exist_ok=True)
     log_file = os.path.join(save_dir, "training_log.txt")
@@ -46,106 +56,117 @@ def setup_model_logger(save_dir):
     )
     logging.info(f"Logger initialized at {log_file}")
 
-# Core function for Moirai
-def moirai_forecast_model(y_df, model_name, save_dir, freq, forecast_horizon, sampling_rate):
-    y_df = y_df.iloc[::int(100 / sampling_rate)].copy()                        # Avoid SettingWithCopyWarning
-    y_df["ds"] = pd.to_datetime(y_df["ds"]).dt.tz_localize(None)              # Ensure datetime format and strip timezone
-    y_df.set_index("ds", inplace=True)                                        # Set datetime index
+def build_windows(series, context_length, forecast_horizon):
+    values = series.values.astype("float32")
+    total_length = context_length + forecast_horizon
+    if len(values) < total_length:
+        return None, None
 
-    # Split into train and test
+    X = []
+    y = []
+    for i in range(len(values) - total_length + 1):
+        window = values[i:i + total_length]
+        X.append(window[:context_length])
+        y.append(window[context_length:])
+
+    X = torch.tensor(X).unsqueeze(-1)  # (batch, length, 1)
+    y = torch.tensor(y)  # (batch, horizon)
+    return X, y
+
+# Core function for Mamba forecasting
+def mamba_forecast_model(y_df, model_name, save_dir, freq, forecast_horizon, sampling_rate):
+    y_df = y_df.iloc[::int(100 / sampling_rate)]
     train_df = y_df.iloc[:-forecast_horizon]
     test_df = y_df.iloc[-forecast_horizon:]
 
-    logging.info(f"Running Moirai {model_name} for {len(train_df)} samples ({sampling_rate:.0f}% of original training set)...")
-
-    # Combine train and test for uniform indexing check
-    ts_df = pd.concat([train_df, test_df])
-
-    # Check frequency and reindex if needed
-    inferred_freq = pd.infer_freq(ts_df.index)
-    if inferred_freq is None or inferred_freq != freq:
-        logging.warning(f"Frequency inferred as {inferred_freq}. Reindexing to uniform frequency {freq}.")
-        full_index = pd.date_range(start=ts_df.index.min(), end=ts_df.index.max(), freq=freq)
-        ts_df = ts_df.reindex(full_index)
-        ts_df["y"] = ts_df["y"].interpolate(method="time")  # Interpolate missing values
-
-    # Re-split after reindexing
-    train_df = ts_df.iloc[:-forecast_horizon]
-    test_df = ts_df.iloc[-forecast_horizon:]
-
-    ds = PandasDataset({"target": ts_df["y"]}, freq=freq)
-
-    train, test_template = split(ds, offset=-forecast_horizon)
-    test_data = test_template.generate_instances(
-        prediction_length=forecast_horizon,
-        windows=1,
-        distance=forecast_horizon
+    context_length = min(forecast_horizon * 2, max(1, len(train_df) - forecast_horizon))
+    logging.info(
+        f"Running Mamba {model_name} for {len(train_df)} samples "
+        f"(sampling {sampling_rate:.0f}%, context {context_length}, horizon {forecast_horizon})"
     )
 
-    CTX = 2 * forecast_horizon  # Context length
+    X_train, y_train = build_windows(train_df["y"], context_length, forecast_horizon)
+    if X_train is None:
+        raise ValueError("Not enough data to build training windows.")
 
-    if MODEL == "moirai":
-        model = MoiraiForecast(
-            module=MoiraiModule.from_pretrained(f"Salesforce/moirai-1.1-R-{SIZE}"),
-            prediction_length=forecast_horizon,
-            context_length=CTX,
-            patch_size=PSZ,
-            num_samples=100,
-            target_dim=1,
-            feat_dynamic_real_dim=ds.num_feat_dynamic_real,
-            past_feat_dynamic_real_dim=ds.num_past_feat_dynamic_real,
-        )
-    else:
-        model = MoiraiMoEForecast(
-            module=MoiraiMoEModule.from_pretrained(f"Salesforce/moirai-moe-1.0-R-{SIZE}"),
-            prediction_length=forecast_horizon,
-            context_length=CTX,
-            patch_size=16,
-            num_samples=100,
-            target_dim=1,
-            feat_dynamic_real_dim=ds.num_feat_dynamic_real,
-            past_feat_dynamic_real_dim=ds.num_past_feat_dynamic_real,
-        )
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = MambaForecaster(
+        d_model=1,
+        d_state=16,
+        d_conv=4,
+        expand=2,
+        forecast_horizon=forecast_horizon
+    ).to(device)
 
-    predictor = model.create_predictor(batch_size=BSZ)
-    forecasts = list(predictor.predict(test_data.input))
-    forecast = forecasts[0].mean
-    y_pred = forecast.tolist()
-    y_true = test_df["y"].values.tolist()
+    train_loader = DataLoader(
+        TensorDataset(X_train, y_train),
+        batch_size=32,
+        shuffle=True
+    )
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    loss_fn = nn.MSELoss()
+
+    model.train()
+    for epoch in range(1, n_epochs + 1):
+        epoch_loss = 0.0
+        for xb, yb in train_loader:
+            xb = xb.to(device)
+            yb = yb.to(device)
+
+            optimizer.zero_grad()
+            pred = model(xb)
+            loss = loss_fn(pred, yb)
+            loss.backward()
+            optimizer.step()
+            epoch_loss += loss.item()
+
+        if epoch % 10 == 0 or epoch == 1:
+            logging.info(f"Epoch {epoch}/{n_epochs} - Loss: {epoch_loss / len(train_loader):.6f}")
+
+    model.eval()
+    with torch.no_grad():
+        context_values = train_df["y"].values.astype("float32")
+        context_values = context_values[-context_length:]
+        context_tensor = torch.tensor(context_values).unsqueeze(0).unsqueeze(-1).to(device)
+        forecast = model(context_tensor).cpu().numpy().flatten()
+
+    y_true = test_df["y"].values
+    y_pred = forecast[:forecast_horizon]
 
     mae, rmse, mape, r2 = calculate_metrics(y_pred, y_true)
     logging.info(f"{model_name} - MAE: {mae:.4f}, RMSE: {rmse:.4f}, MAPE: {mape:.4f}, R2: {r2:.4f}")
 
     forecast_plot_and_csv(
-        pd.DataFrame({"datetime": test_df.index, "Actual": y_true, "Forecast": y_pred}).set_index("datetime"),
+        pd.DataFrame({"datetime": test_df["ds"], "Actual": y_true, "Forecast": y_pred}).set_index("datetime"),
         model_name, save_dir
     )
     return mae, rmse, mape, r2
 
 # Train each target (load, PV, battery)
 def train_load_model(load_data, save_dir, freq, forecast_horizon, sampling_rate):
-    return moirai_forecast_model(load_data, "Load", save_dir, freq, forecast_horizon, sampling_rate)
+    return mamba_forecast_model(load_data, "Load", save_dir, freq, forecast_horizon, sampling_rate)
 
 def train_pv_model(pv_data, save_dir, house, freq, forecast_horizon, sampling_rate):
-    return moirai_forecast_model(pv_data, f"PV_house_{house}", save_dir, freq, forecast_horizon, sampling_rate)
+    return mamba_forecast_model(pv_data, f"PV_house_{house}", save_dir, freq, forecast_horizon, sampling_rate)
 
 def train_battery_model(battery_data, save_dir, house, freq, forecast_horizon, sampling_rate):
-    return moirai_forecast_model(battery_data, f"BESS_house_{house}", save_dir, freq, forecast_horizon, sampling_rate)
+    return mamba_forecast_model(battery_data, f"BESS_house_{house}", save_dir, freq, forecast_horizon, sampling_rate)
 
-# London-Zonnedael specific functions 
+# London-Zonnedael training functions
 def train_london_model(load_data, save_dir, freq, forecast_horizon, sampling_rate):
-    return moirai_forecast_model(load_data, "london_load", save_dir, freq, forecast_horizon, sampling_rate)
+    return mamba_forecast_model(load_data, "london_load", save_dir, freq, forecast_horizon, sampling_rate)
 
 def train_zonnedael_model(customer_id, data_df, save_dir, freq, forecast_horizon, sampling_rate):
-    return moirai_forecast_model(data_df, f"zonnedael_customer_{customer_id}", save_dir, freq, forecast_horizon, sampling_rate)
+    return mamba_forecast_model(data_df, f"zonnedael_customer_{customer_id}", save_dir, freq, forecast_horizon, sampling_rate)
 
-# Full pipeline for Moirai
+# Full pipeline for Mamba
 def train_all_models(start_dt, end_dt, save_dir, freq, forecast_horizon, sampling_rate):
     setup_model_logger(save_dir)
     metrics = []
 
     start_time = time.time()
-    logging.info("...Start Uni2TS/Moirai forecasting...")
+    logging.info("...Start Mamba forecasting...")
 
     if selected_dataset == "belgium":
         logging.info("Forecasting load consumption")
@@ -181,7 +202,7 @@ def train_all_models(start_dt, end_dt, save_dir, freq, forecast_horizon, samplin
     plot_model_metrics(metrics, save_dir)
 
     elapsed_time = time.time() - start_time
-    logging.info("...End Uni2TS/Moirai forecasting...")
+    logging.info("...End Mamba forecasting...")
     logging.info(f"Forecasting completed in {elapsed_time:.2f} seconds.")
 
 # Entry point
@@ -191,20 +212,26 @@ def paper_forecasting_train(run_num, sampling_rate):
     end_dt = pd.Timestamp("2024-04-01 00:00:00", tz="UTC")
 
     train_freq = int(15 * (100 / sampling_rate))
-    freq_str = f"{train_freq}T"
-
+    freq_str = f"{train_freq}min"
     forecast_horizon = int(192 / (100 / sampling_rate))
 
     try:
         gc.collect()
-        save_dir = f"results/results_{selected_dataset}/MOIRAI/Sampling_{sampling_rate:.0f}/Run_{run_num}"
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+        save_dir = f"results/results_{selected_dataset}/Mamba/Sampling_{sampling_rate:.0f}/Run_{run_num}"
         train_all_models(start_dt, end_dt, save_dir, freq_str, forecast_horizon, sampling_rate)
+
         gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
     except Exception as e:
-        logging.error(f"Skipping Moirai due to error: {str(e)}", exc_info=True)
+        logging.error(f"Skipping Mamba due to error: {str(e)}", exc_info=True)
 
 # Run all sampling rates and seeds
 if __name__ == "__main__":
     for sampling_rate in [25, 100/3, 50, 100]:
-        for run_num in range(1, 2):  # Loop for run_num
+        for run_num in range(1, 11):
             paper_forecasting_train(run_num, sampling_rate)
