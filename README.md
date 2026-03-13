@@ -21,24 +21,11 @@ These tasks collectively capture the dynamics of distributed energy systems and 
 
 ### Create environment and install dependencies
 
-This repository does not ship a requirements file yet. A minimal install that matches the code paths is:
+To reproduce the results, there is need to create several python environments to avoid confliciting packages. The links to the repositories of all the models evaluated in this work are presented in the **Forecasting Models** section.
 
-```bash
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-python -m pip install --upgrade pip
-python -m pip install pandas numpy scipy scikit-learn lightgbm pmdarima matplotlib seaborn
-python -m pip install torch neuralforecast gluonts mxnet transformers
-python -m pip install nixtla timesfm chronos-forecasting mamba-ssm uni2ts
-```
+### Run a model script
 
-Notes:
-- Some foundation models require GPU for practical runtimes.
-- TimeGPT requires an API key (see below).
-
-### Run a model class script
-
-Each script runs all models in that class and stores results under [results](results).
+Each script runs the models it contains and stores results in the .
 
 ```bash
 python models/models_statsml.py
@@ -53,7 +40,7 @@ python models/fmodel_chronos.py
 python models/fmodel_timerxl.py
 ```
 
-To switch datasets, edit the `selected_dataset` value in the relevant script.
+To switch datasets, edit the `selected_dataset` in the relevant script.
 
 ## Datasets
 
@@ -64,13 +51,13 @@ Datasets are loaded via [models/dataset_config.py](models/dataset_config.py). Fi
 - London smart meter dataset: [data/london_dataset/LCL_london_consumption_2013.csv](data/london_dataset/LCL_london_consumption_2013.csv)
 - Zonnedael dataset: [data/zonnedael_dataset/liander_zonnedael_2013_original.csv](data/zonnedael_dataset/liander_zonnedael_2013_original.csv)
 
-## Model Catalog (30 Models)
+## Forecasting Models
 
-Each model lists its primary library and a clickable GitHub repository. Scripts are linked for direct execution.
+Each model lists its primary library and a GitHub repository. Scripts are linked for direct execution.
 
 ![Forecast models timeline](figures/forcast_models_timeline.png)
 
-### 1) Statistical and Machine Learning (5)
+### 1. Statistical and Machine Learning
 
 | Model | Library | Repository | Script |
 |------|---------|------------|--------|
@@ -80,7 +67,7 @@ Each model lists its primary library and a clickable GitHub repository. Scripts 
 | Naive Drift | custom (numpy, pandas) | https://github.com/numpy/numpy | [models/model_naivedrift.py](models/model_naivedrift.py) |
 | Naive Moving Average | custom (numpy, pandas) | https://github.com/pandas-dev/pandas | [models/models_statsml.py](models/models_statsml.py) |
 
-### 2) MLP-based Models (5)
+### 2. MLP-based Models
 
 | Model | Library | Repository | Script |
 |------|---------|------------|--------|
@@ -90,7 +77,7 @@ Each model lists its primary library and a clickable GitHub repository. Scripts 
 | NLinear | NeuralForecast | https://github.com/Nixtla/neuralforecast | [models/models_neuralforecast.py](models/models_neuralforecast.py) |
 | TiDE | NeuralForecast | https://github.com/Nixtla/neuralforecast | [models/models_neuralforecast.py](models/models_neuralforecast.py) |
 
-### 3) Recurrent Neural Networks (5)
+### 3. Recurrent Neural Networks
 
 | Model | Library | Repository | Script |
 |------|---------|------------|--------|
@@ -100,7 +87,7 @@ Each model lists its primary library and a clickable GitHub repository. Scripts 
 | Mamba | mamba-ssm | https://github.com/state-spaces/mamba | [models/model_mamba.py](models/model_mamba.py) |
 | Temporal Fusion Transformer (TFT) | GluonTS | https://github.com/awslabs/gluonts | [models/models_gluonts.py](models/models_gluonts.py) |
 
-### 4) Convolutional Neural Networks (5)
+### 4. Convolutional Neural Networks
 
 | Model | Library | Repository | Script |
 |------|---------|------------|--------|
@@ -110,7 +97,7 @@ Each model lists its primary library and a clickable GitHub repository. Scripts 
 | WaveNet | GluonTS | https://github.com/awslabs/gluonts | [models/models_gluonts.py](models/models_gluonts.py) |
 | MQ-CNN | GluonTS | https://github.com/awslabs/gluonts | [models/models_gluonts.py](models/models_gluonts.py) |
 
-### 5) Transformer-based Models (5)
+### 5. Transformer-based Models
 
 | Model | Library | Repository | Script |
 |------|---------|------------|--------|
@@ -120,7 +107,7 @@ Each model lists its primary library and a clickable GitHub repository. Scripts 
 | Vanilla Transformer | NeuralForecast | https://github.com/Nixtla/neuralforecast | [models/models_neuralforecast.py](models/models_neuralforecast.py) |
 | TimeXer | NeuralForecast | https://github.com/Nixtla/neuralforecast | [models/models_neuralforecast.py](models/models_neuralforecast.py) |
 
-### 6) Time Series Foundation Models (5)
+### 6. Time Series Foundation Models
 
 | Model | Library | Repository | Script |
 |------|---------|------------|--------|
@@ -130,16 +117,13 @@ Each model lists its primary library and a clickable GitHub repository. Scripts 
 | Chronos | chronos-forecasting | https://github.com/amazon-science/chronos-forecasting | [models/fmodel_chronos.py](models/fmodel_chronos.py) |
 | Timer-XL | transformers | https://github.com/huggingface/transformers | [models/fmodel_timerxl.py](models/fmodel_timerxl.py) |
 
-## Model-specific Notes
+## Notes
 
+- Some models can run on the CPU while others require GPU for practical runtimes.
 - TimeGPT requires a valid API key in [models/fmodel_timegpt.py](models/fmodel_timegpt.py).
 - Timer-XL uses Hugging Face model IDs. Edit the `model_configs` mapping in [models/fmodel_timerxl.py](models/fmodel_timerxl.py) to switch models.
 - Chronos, TimesFM, and MOIRAI may download weights on first run.
 
 ## Results
 
-All model outputs are saved under [results](results) with per-run CSVs, plots, and metrics summaries. The plotting and metrics utilities are in [models/utils.py](models/utils.py) and [models/plots.py](models/plots.py).
-
-## Citation
-
-If you use this benchmark or repository in your research, please cite the corresponding paper.
+All model outputs are saved in the `results` folder with per-run plots and metrics summaries. The plotting and metrics utilities are in [models/utils.py](models/utils.py) and [models/plots.py](models/plots.py).
