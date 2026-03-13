@@ -1,19 +1,17 @@
 # A Survey and Benchmark for Household Electricity Forecasting: From Statistical to Foundation Models
 
-Accurate energy forecasting is a fundamental requirement for modern power systems. Reliable forecasts of electricity consumption and generation enable grid operators, utilities, and energy management systems to improve operational efficiency, reduce costs, and support the integration of distributed energy resources such as photovoltaic (PV) systems, electric vehicles, and battery energy storage systems (BESS). As energy systems become increasingly decentralized and data-driven, forecasting methods must also evolve to handle complex temporal patterns, heterogeneous data sources, and varying levels of data availability. Early forecasting approaches were dominated by classical statistical models and traditional machine learning algorithms. More recently, deep learning architectures such as recurrent neural networks, convolutional networks, and transformers have demonstrated strong performance by capturing complex nonlinear and long-range temporal dependencies. The latest development in this progression is the emergence of **time series foundation models (TSFMs)**, large pre-trained models capable of performing forecasting tasks using zero-shot inference without task-specific training. 
-
-This work presents a **comprehensive survey and benchmarking study of 30 representative forecasting models**, covering the full spectrum of forecasting approaches, from classical statistical methods to recent TSFMs. To ensure a fair and consistent evaluation, all models are benchmarked within a unified experimental framework. The evaluation focuses on **three important household energy forecasting tasks**:
+This is the official repository for our work on benchmarking forecasting models on **household energy consumption and generation** tasks. We evaluate **30 representative time-series forecasting models** spanning the full spectrum of forecasting approaches, from classical statistical and machine learning models to modern deep learning architectures and **time series foundation models (TSFMs)**. All models are evaluated within a **unified benchmarking framework** to ensure fair comparison. The study focuses on three key residential energy forecasting tasks:
 
 - **Electricity load forecasting**
 - **Solar photovoltaic (PV) generation forecasting**
 - **Battery energy storage system (BESS) operation forecasting**
 
-These tasks collectively capture the dynamics of distributed energy systems and allow the assessment of forecasting models across both consumption and generation scenarios. The benchmarking pipeline includes a standardized data processing workflow consisting of interpolation for missing values, outlier detection using statistical methods, normalization, and resampling at different temporal resolutions. All models are evaluated using their **default configurations**, without extensive hyperparameter tuning, in order to assess their **out-of-the-box performance** and ensure comparability across architectures. The main objectives of this work are therefore to:
+The benchmarking pipeline applies a standardized preprocessing workflow including **missing value interpolation, outlier detection, normalization, and temporal resampling**. Models are evaluated using their **default configurations** to assess their **out-of-the-box performance** without extensive hyperparameter tuning. The main objectives of this work are therefore to:
 
-- Provide a **comprehensive survey of forecasting models** 
-- Establish a **unified benchmarking framework** for fair comparison across different paradigms
+- Provide a **broad comparison of forecasting models** of different architectures
+- Establish a **consistent benchmarking framework**
 - Evaluate model performance across **multiple real-world energy forecasting tasks**
-- Investigate the **zero-shot capabilities and limitations of TSFMs**
+- Investigate the **zero-shot forecasting capabilities of TSFMs**
 
 ![Survey method overview](figures/survey_method.png)
 
