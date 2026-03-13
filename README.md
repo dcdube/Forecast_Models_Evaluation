@@ -3,15 +3,12 @@ Official repository for the paper: A Survey and Benchmark for Household Electric
 
 This project benchmarks 30 time series forecasting models across six methodological classes, spanning classical statistical methods to large-scale foundation models. It includes unified training pipelines, dataset loaders, metric computation, and reproducible results logging.
 
+![Survey method overview](figures/survey_method.png)
+
 **Highlights**
 - 30 models across 6 classes with consistent evaluation pipelines
 - Multiple household energy datasets (PV, battery, and load)
 - Reproducible runs with per-model logging, plots, and CSV outputs
-
-## Figures
-
-![Forecast models timeline](figures/forcast_models_timeline.png)
-![Survey method overview](figures/survey_method.png)
 
 ## Quick Start
 
@@ -63,6 +60,8 @@ Datasets are loaded via [models/dataset_config.py](models/dataset_config.py). Fi
 ## Model Catalog (30 Models)
 
 Each model lists its primary library and a clickable GitHub repository. Scripts are linked for direct execution.
+
+![Forecast models timeline](figures/forcast_models_timeline.png)
 
 ### 1) Statistical and Machine Learning (5)
 
