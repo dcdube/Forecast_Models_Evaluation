@@ -19,7 +19,7 @@ The benchmarking pipeline applies a standardized preprocessing workflow includin
 
 ### Create environment and install dependencies
 
-To reproduce the results, there is need to create several python environments to avoid confliciting packages. The links to the repositories of all the models evaluated in this work are presented in the **Forecasting Models** section.
+To reproduce the results, there is need to create several python environments for different model libraries to avoid confliciting packages. The links to the repositories of all the models evaluated in this work are presented in the **Forecasting Models** section.
 
 ### Run a model script
 
