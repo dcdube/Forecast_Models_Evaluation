@@ -42,7 +42,7 @@ To switch datasets, edit the `selected_dataset` in the relevant script.
 
 ## Datasets
 
-Datasets are loaded via [models/dataset_config.py](models/dataset_config.py). File locations used by the loaders:
+Datasets are loaded via [utils/dataset_config.py](utils/dataset_config.py). File locations used by the loaders:
 
 - Belgium PV and battery datasets: [data/belgium_dataset](data/belgium_dataset)
 - Germany WPUQ (SFH19): [data/germany_wpuq_dataset/SFH19_2023_2024_15min_3_month.csv](data/germany_wpuq_dataset/SFH19_2023_2024_15min_3_month.csv)
@@ -124,4 +124,4 @@ Each model lists its primary library and a GitHub repository. Scripts are linked
 
 ## Results
 
-All model outputs are saved in the `results` folder with per-run plots and metrics summaries. The plotting and metrics utilities are in [models/utils.py](models/utils.py) and [models/plots.py](models/plots.py). Please refer to our paper for the results.
+All model outputs are saved in the `results` folder with per-run plots and metrics summaries. The plotting and metrics utilities are in [utils/metrics.py](utils/metrics.py) and [utils/plots.py](utils/plots.py). Please refer to our paper for the results.
