@@ -4,13 +4,14 @@ import math
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 import matplotlib.pyplot as plt
+from matplotlib.transforms import ScaledTranslation
 import numpy as np
 import pandas as pd
 
 f_size = 9
 
 # Dataset Selection Toggle
-selected_dataset = "germany"  # Options: "belgium" or "germany" or "london" or "zonnedael"
+selected_dataset = "zonnedael"  # Options: "belgium" or "germany" or "london" or "zonnedael"
 
 legend_name_map = {
     "KNNRegression": "KNN Reg.",
@@ -152,7 +153,7 @@ def _read_single_load_file(load_csv: Path) -> Optional[pd.DataFrame]:
     return parsed.sort_values("datetime")
 
 
-def read_target_losses(
+def read_target_series(
     model_dir: Path,
     target_filename: str,
 ) -> Tuple[Optional[pd.Series], Optional[pd.Series], Optional[Path]]:
@@ -193,12 +194,10 @@ def read_target_losses(
             }
         )
 
-    err = merged["actual"].to_numpy() - merged["forecast"].to_numpy()
     index = pd.DatetimeIndex(merged["datetime"])
-
-    mae_losses = pd.Series(np.abs(err), index=index).sort_index()
-    rmse_losses = pd.Series(err**2, index=index).sort_index()
-    return mae_losses, rmse_losses, target_files[0]
+    actual_series = pd.Series(merged["actual"].to_numpy(), index=index).sort_index()
+    forecast_series = pd.Series(merged["forecast"].to_numpy(), index=index).sort_index()
+    return actual_series, forecast_series, target_files[0]
 
 
 def build_dm_matrix(losses: Dict[str, Optional[pd.Series]], model_names: Iterable[str]) -> np.ndarray:
@@ -221,6 +220,59 @@ def build_dm_matrix(losses: Dict[str, Optional[pd.Series]], model_names: Iterabl
 
     return matrix
 
+
+def _compute_common_timestamp_index(losses: Dict[str, Optional[pd.Series]]) -> pd.DatetimeIndex:
+    available = [series.index for series in losses.values() if series is not None and not series.empty]
+    if not available:
+        return pd.DatetimeIndex([])
+
+    common_index = available[0]
+    for idx in available[1:]:
+        common_index = common_index.intersection(idx)
+
+    return pd.DatetimeIndex(common_index).sort_values()
+
+
+def _align_losses_to_index(
+    losses: Dict[str, Optional[pd.Series]],
+    common_index: pd.DatetimeIndex,
+) -> Dict[str, Optional[pd.Series]]:
+    aligned: Dict[str, Optional[pd.Series]] = {}
+    for model_name, series in losses.items():
+        if series is None:
+            aligned[model_name] = None
+            continue
+
+        aligned_series = series.reindex(common_index).dropna()
+        aligned[model_name] = aligned_series if len(aligned_series) == len(common_index) else None
+
+    return aligned
+
+
+def _build_losses_from_actual_forecast(
+    actual_series: Optional[pd.Series],
+    forecast_series: Optional[pd.Series],
+) -> Tuple[Optional[pd.Series], Optional[pd.Series]]:
+    if actual_series is None or forecast_series is None:
+        return None, None
+
+    aligned = pd.concat([actual_series.rename("actual"), forecast_series.rename("forecast")], axis=1, join="inner").dropna()
+    if aligned.empty:
+        return None, None
+
+    err = aligned["actual"].to_numpy() - aligned["forecast"].to_numpy()
+    idx = aligned.index
+    mae_losses = pd.Series(np.abs(err), index=idx).sort_index()
+    rmse_losses = pd.Series(err**2, index=idx).sort_index()
+    return mae_losses, rmse_losses
+
+
+def _shift_xticklabels_right(ax: plt.Axes, fig: plt.Figure, points: float = 2.0) -> None:
+    # Move x tick labels slightly right for readability in dense, rotated labels.
+    offset = ScaledTranslation(points / 30.0, 0.0, fig.dpi_scale_trans)
+    for label in ax.get_xticklabels():
+        label.set_transform(label.get_transform() + offset)
+
 def plot_dm_heatmaps(
     model_names: List[str],
     dm_matrix_mae: np.ndarray,
@@ -238,8 +290,8 @@ def plot_dm_heatmaps(
     cmap = plt.get_cmap("viridis").copy()
     cmap.set_over("yellow")
     cmap.set_bad("white")
-    im = ax_mae.imshow(dm_matrix_mae, cmap=cmap, vmin=0.0, vmax=0.1, aspect="auto")
-    ax_rmse.imshow(dm_matrix_rmse, cmap=cmap, vmin=0.0, vmax=0.1, aspect="auto")
+    im = ax_mae.imshow(dm_matrix_mae.T, cmap=cmap, vmin=0.0, vmax=0.1, aspect="auto")
+    ax_rmse.imshow(dm_matrix_rmse.T, cmap=cmap, vmin=0.0, vmax=0.1, aspect="auto")
 
     ticks = np.arange(len(model_names))
     display_names = [legend_name_map.get(name, name) for name in model_names]
@@ -247,6 +299,7 @@ def plot_dm_heatmaps(
     ax_mae.set_xticks(ticks)
     ax_mae.set_yticks(ticks)
     ax_mae.set_xticklabels(display_names, rotation=90, ha="right", fontsize=f_size)
+    _shift_xticklabels_right(ax_mae, fig)
     ax_mae.set_yticklabels(display_names, fontsize=f_size)
     ax_mae.text(-0.04, 1.035, "(a)", transform=ax_mae.transAxes, ha="left", va="top", fontsize=f_size)
 
@@ -254,6 +307,7 @@ def plot_dm_heatmaps(
     ax_rmse.set_xticks(ticks)
     ax_rmse.set_yticks(ticks)
     ax_rmse.set_xticklabels(display_names, rotation=90, ha="right", fontsize=f_size)
+    _shift_xticklabels_right(ax_rmse, fig)
     ax_rmse.set_yticklabels([])
     ax_rmse.tick_params(axis="y", left=False)
     ax_rmse.text(-0.04, 1.035, "(b)", transform=ax_rmse.transAxes, ha="left", va="top", fontsize=f_size)
@@ -289,22 +343,73 @@ def run_dm_for_dataset(dataset_name: str) -> List[Path]:
     model_names = [model_dir.name for model_dir in model_dirs]
 
     for target_filename in target_filenames:
-        mae_losses: Dict[str, Optional[pd.Series]] = {}
-        rmse_losses: Dict[str, Optional[pd.Series]] = {}
+        actual_series_map: Dict[str, Optional[pd.Series]] = {}
+        forecast_series_map: Dict[str, Optional[pd.Series]] = {}
         missing_loss_files: List[str] = []
 
         for model_dir in model_dirs:
             model_name = model_dir.name
-            mae_series, rmse_series, _ = read_target_losses(model_dir, target_filename)
-            mae_losses[model_name] = mae_series
-            rmse_losses[model_name] = rmse_series
-            if mae_series is None or rmse_series is None:
+            actual_series, forecast_series, _ = read_target_series(model_dir, target_filename)
+            actual_series_map[model_name] = actual_series
+            forecast_series_map[model_name] = forecast_series
+            if actual_series is None or forecast_series is None:
                 missing_loss_files.append(model_name)
 
         if missing_loss_files:
             print(
                 f"Warning ({dataset_dir.name} | {target_filename}): could not read forecast series for models: "
                 + ", ".join(sorted(missing_loss_files))
+            )
+
+        available_lengths = [len(series) for series in forecast_series_map.values() if series is not None]
+        common_index = _compute_common_timestamp_index(forecast_series_map)
+        if len(common_index) < 5:
+            print(
+                f"Warning ({dataset_dir.name} | {target_filename}): insufficient shared timestamps "
+                f"for DM test (shared={len(common_index)}). Skipping target."
+            )
+            continue
+
+        actual_series_map = _align_losses_to_index(actual_series_map, common_index)
+        forecast_series_map = _align_losses_to_index(forecast_series_map, common_index)
+
+        # Verify that Actual values are consistent across models on the shared timestamp grid.
+        ref_model = next((name for name, series in actual_series_map.items() if series is not None), None)
+        if ref_model is not None:
+            ref_actual = actual_series_map[ref_model]
+            mismatched_actual_models: List[str] = []
+            for model_name, actual_series in actual_series_map.items():
+                if actual_series is None or ref_actual is None:
+                    continue
+                same = np.allclose(ref_actual.to_numpy(), actual_series.to_numpy(), rtol=0.0, atol=1e-12)
+                if not same:
+                    mismatched_actual_models.append(model_name)
+            if mismatched_actual_models:
+                print(
+                    f"Warning ({dataset_dir.name} | {target_filename}): Actual series mismatch on shared index for models: "
+                    + ", ".join(sorted(mismatched_actual_models))
+                )
+
+        mae_losses: Dict[str, Optional[pd.Series]] = {}
+        rmse_losses: Dict[str, Optional[pd.Series]] = {}
+        for model_name in model_names:
+            mae_series, rmse_series = _build_losses_from_actual_forecast(
+                actual_series_map.get(model_name), forecast_series_map.get(model_name)
+            )
+            mae_losses[model_name] = mae_series
+            rmse_losses[model_name] = rmse_series
+
+        dropped_after_alignment = [name for name, series in mae_losses.items() if series is None]
+        if dropped_after_alignment:
+            print(
+                f"Warning ({dataset_dir.name} | {target_filename}): models removed after shared-index alignment: "
+                + ", ".join(sorted(dropped_after_alignment))
+            )
+
+        if available_lengths and len(common_index) < min(available_lengths):
+            print(
+                f"Info ({dataset_dir.name} | {target_filename}): enforcing shared index reduced sample length "
+                f"from min={min(available_lengths)} to shared={len(common_index)}"
             )
 
         dm_matrix_mae = build_dm_matrix(mae_losses, model_names)
